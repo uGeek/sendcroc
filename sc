@@ -2,20 +2,27 @@
 
 VERSION="0.2 17/02/2023"
 
+#!/bin/bash
+
+VERSION="0.2 01/04/2023"
+
 
 if [ "$1" = "h" ] || [ "$1" = "" ] ; then
 echo "
 Comando                            Acción
 --------------------------------------------------------------------
    sc   archivo/directorio         Enviar un archivo/s o directorio
+   sc          g                   Enviar con el relay global
    sc          t                   Enviar un texto
-   rc                              Recibir archivo/s, directorio o texto 
+   sc          tg                  Enviar un texto desde realy global
+   rc                              Recibir archivo/s, directorio o texto    
+   rcg                             Recibir archivo/s, directorio o texto del servidor global  
 
-   sc     install    debian        Instalar paquetes para debian
-   sc     install    arch          Instalar paquetes para Arch
-   sc     install    termux        Instalar paquetes para termux
-   sc         qr                   Muestra los códigos qr para importar en tu móvil con termux
 
+   Si estás dentro de un directorio y quieres enviar todos los archivos o directorios, lo haríamos del siguiente modo:
+
+   sc .
+   sc g .
 
 sendcroc version $VERSION
 "
@@ -59,40 +66,6 @@ then
 fi
 
 
-if [ "$1" = "install" ] && [ "$2" = "arch" ]
-     then
-sudo curl -L https://raw.githubusercontent.com/uGeek/sendcroc/main/sc \
-          -o /usr/bin/sc && sudo chmod +x /usr/bin/sc     
-sudo pacman -S croc qrencode
-    exit
-fi
-
-if [ "$1" = "install" ] && [ "$2" = "debian" ]
-     then
-sudo curl -L https://raw.githubusercontent.com/uGeek/sendcroc/main/sc \
-          -o /usr/bin/sc && sudo chmod +x /usr/bin/sc     
-sudo apt install croc qrencode
-    exit
-fi
-
-
-if [ "$1" = "qr" ] ; then
-echo "Archivo de configuración. sendcroc.conf"
-echo "------------------------------------------------"
-qrencode -m 2 -t utf8 <<< "$(cat ~/.config/sendcroc/sendcroc.conf)" 
-echo "------------------------------------------------"
-cat ~/.config/sendcroc/sendcroc.conf
-echo "------------------------------------------------"
-echo ""
-echo ""
-echo "Añade a tu archivo ~/.bashrc o ~/.zshrc"
-echo "------------------------------------------------"
-qrencode -m 2 -t utf8 <<< "$(source ~/.config/sendcroc/sendcroc.conf ; echo "alias rc='croc --yes $RELAY $CODEPASS'")"
-echo "------------------------------------------------"
-source ~/.config/sendcroc/sendcroc.conf ; echo "alias rc='croc --yes $RELAY $CODEPASS'"
-echo "------------------------------------------------"
-   exit
-fi
 
 if [ "$1" = "t" ] ; then
 
@@ -101,5 +74,19 @@ croc $RELAY send --code $CODEPASS  --text "$TEXTO"
 		exit
 		fi
 
+if [ "$1" = "tg" ] ; then
 
-croc $RELAY send --code $CODEPASS  "$1"
+echo -en "Escribe aquí el texto que quieres enviar: " ; read TEXTO
+croc  send --code $CODEPASSGLOBAL  --text "$TEXTO"
+		exit
+		fi
+
+
+
+if [ "$1" = "g" ] ; then
+    croc --yes send --code $CODEPASSGLOBAL "$2"/* 
+		exit
+		fi
+
+
+croc $RELAY send --code $CODEPASS  "$1"/*
