@@ -72,6 +72,7 @@ alias rc='croc --yes --relay [IP] --pass xxxxxxxxxxxx yyyyyyyyyyyy'
 
 ```
 CODEPASS="yyyyyyyyyyyy"
+CODEPASSGLOBAL="zzzzzzzzzzzz"
 RELAY="--pass xxxxxxxxxxxx  --relay [IP]"
 #RELAY=""   # utilizar servidor relay de croc
 ```
