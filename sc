@@ -1,8 +1,5 @@
 #!/bin/bash
 
-VERSION="0.2 17/02/2023"
-
-#!/bin/bash
 
 VERSION="0.2 01/04/2023"
 
