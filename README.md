@@ -9,53 +9,34 @@ Olvídate de tener que recordar y teclear códigos complejos en ambos extremos. 
 
 ## ✨ Características
 
-*   **Instalación Sencilla**: Instaladores "one-liner" para las distribuciones más populares.
+*   **Instalación Universal**: Un único comando para instalar el script en cualquier sistema Linux.
 *   **Configuración Automática**: Un asistente interactivo te guía en la primera ejecución para crear tu configuración.
 *   **Manejo Seguro de Secretos**: Utiliza la variable de entorno `CROC_SECRET` para evitar que tus códigos aparezcan en el historial o en la lista de procesos.
 *   **Soporte para Relay Personalizado**: Configura tu propio relay para máxima velocidad y privacidad.
 *   **Comandos Intuitivos**: Comandos simples y directos como `sc mi_archivo` para enviar y `sc rc` para recibir.
-*   **Transferencia de Texto**: Envía fragmentos de texto o notas rápidas directamente desde la terminal con `sc t`.
 *   **Automatización con Cron**: Comandos específicos (`sccron`, `rccron`) para facilitar la programación de transferencias automáticas.
 *   **Sin Dependencias Externas (más allá de `croc`)**: Es un script de Bash puro.
 
 ## 🚀 Instalación
 
-El script puede instalar `croc` como dependencia y a sí mismo en la ubicación correcta del sistema.
+La instalación se realiza en dos sencillos pasos.
 
-### Método 1: Instalación Guiada (One-Liner)
+### Paso 1: Instalar `croc` (Prerrequisito)
 
-Este es el método recomendado. Abre tu terminal y ejecuta el comando correspondiente a tu sistema operativo.
-
-**Para Debian / Ubuntu / y derivadas:**
-```sh
-bash <(curl -sL https://raw.githubusercontent.com/uGeek/sendcroc/main/sc) install debian
-```
-
-**Para Arch Linux / Manjaro / y derivadas:**
-```sh
-bash <(curl -sL https://raw.githubusercontent.com/uGeek/sendcroc/main/sc) install arch
-```
-
-**Para Termux (Android):**```sh
-bash <(curl -sL https://raw.githubusercontent.com/uGeek/sendcroc/main/sc) install termux
-```
-
-### Método 2: Instalación Manual (Otras Distros)
-
-Si tu distro no está en la lista o prefieres un mayor control, sigue estos dos pasos:
-
-**1. Instala `croc`:**
+Si aún no tienes `croc`, instálalo con el siguiente comando:
 ```sh
 curl https://getcroc.schollz.com | bash
 ```
-*(Nota: Esto puede requerir `sudo` si tu usuario no tiene permisos sobre `/usr/local/bin`)*
+*(Nota: Esto podría requerir `sudo` si tu usuario no tiene permisos sobre `/usr/local/bin`)*.
 
-**2. Instala el script `sendcroc`:**
+### Paso 2: Instalar `sendcroc`
+
+Ejecuta este comando único en tu terminal para descargar el script y hacerlo ejecutable en todo tu sistema:
 ```sh
-sudo curl -L https://raw.githubusercontent.com/uGeek/sendcroc/main/sc -o /usr/local/bin/sc && sudo chmod +x /usr/local/bin/sc
+sudo curl -L https://raw.githubusercontent.com/uGeek/sendcroc/main/sc -o /usr/bin/sc && sudo chmod +x /usr/bin/sc
 ```
-*(Usamos `/usr/local/bin` porque es el estándar para scripts y aplicaciones instaladas manualmente)*.
 
+¡Y eso es todo! Ya puedes usar el comando `sc`.
 
 ## ⚙️ Primera Ejecución y Configuración
 
@@ -115,11 +96,11 @@ La sintaxis general es `sc [COMANDO] [ARGUMENTO]`.
 >
 > **Emisor (a las 2:00 AM):**
 > ```crontab
-> 0 2 * * * /usr/local/bin/sc sccron /home/user/backups/
+> 0 2 * * * /usr/bin/sc sccron /home/user/backups/
 > ```
 > **Receptor (a las 2:01 AM):**
 > ```crontab
-> 1 2 * * * cd /home/user/restores/ && /usr/local/bin/sc rccron
+> 1 2 * * * cd /home/user/restores/ && /usr/bin/sc rccron
 > ```
 
 ## 📜 Licencia
