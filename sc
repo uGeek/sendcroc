@@ -1,156 +1,230 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-VERSION="0.3.4  30/07/2023"
-if [ "$1" = "h" ] || [ "$1" = "" ] ; then
-echo "
-Comando                            Acción
---------------------------------------------------------------------
-   sc   archivo/directorio         Enviar un archivo/s o directorio
-   sc          g                   Enviar con el relay global
-   sc          t                   Enviar un texto
-   sc          tg                  Enviar un texto desde realy global
-   rc                              Recibir archivo/s, directorio o texto
-   rcg                             Recibir archivo/s, directorio o texto del servidor global
-   sc          dotfile             Ver archivo que hay que copiar en .bashrc o .zshrc
-   sc          edotfile            Editar dotfile
+#===========#
+#  sendcroc #
+#===========#
+#
+# DESCRIPCIÓN:
+# Un wrapper robusto para 'croc' que incluye un instalador y usa la variable
+# de entorno CROC_SECRET para un manejo seguro de los códigos.
+#
+# AUTOR: Basado en el script original de uGeek
+# VERSIÓN: 2.3.0 
+# FECHA: 18/07/2025
 
-   sc          sccron              Enviar por cron
-   sc          rccron              Recibir por cron
+# --- Variables Globales y de Configuración ---
+VERSION="2.3.0 (18/07/2025)"
+CONFIG_DIR="${HOME}/.config/sendcroc"
+CONFIG_FILE="${CONFIG_DIR}/sendcroc.conf"
+INSTALL_PATH="/usr/local/bin/sc"
+
+# --- Funciones ---
+
+show_help() {
+    cat << EOF
+
+sendcroc (sc) - v${VERSION}
+Wrapper autónomo para 'croc' que facilita la transferencia de archivos de forma segura.
+
+SINOPSIS
+    sc [COMANDO] [ARGUMENTO]
+
+COMANDOS PRINCIPALES
+    sc [archivo/dir]            Envía el archivo o directorio especificado.
+    sc rc                       Prepara la recepción de un archivo.
+    
+    sc g [archivo/dir]          Envía usando la configuración global (pública).
+    sc rcg                      Recibe usando la configuración global.
+    
+    sc t                        Inicia un prompt para enviar un texto simple.
+
+CONFIGURACIÓN Y CRON
+    dotfile                     Muestra el contenido del archivo de configuración.
+    edotfile                    Abre y edita el archivo de configuración.
+    sccron [ruta]               Comando para ENVIAR vía cron.
+    rccron                      Comando para RECIBIR vía cron.
+
+EJEMPLOS
+
+    Uso interactivo:
+    ----------------
+    # Máquina A (Emisor): Enviar el directorio 'Proyecto'
+    sc Proyecto/
+
+    # Máquina B (Receptor): Recibir el directorio en la carpeta actual
+    sc rc
 
 
-   Ejemplos:
-   Enviar el contenido de un directorio local a otro remoto, con archivos nuevos, sin eliminar los antiguos.
+    Uso con cron ('crontab -e'):
+    -----------------------------
+    Recuerda usar la ruta absoluta al script 'sc' (ej: ${INSTALL_PATH}).
 
-   Emisor:   Enviar desde el directorio HOME, el directorio Documentos:
-      sc Documentos/ 
+    # Emisor: Enviar el contenido de Descargas todos los días a las 9:00 AM
+    00 09 * * * ${INSTALL_PATH} sccron /home/ubuntu/Descargas/
 
-   Receptor: Situate en el directorio HOME y ejecuta el comando:
-      rc
+    # Receptor: Recibir 1 minuto después en el mismo directorio
+    01 09 * * * cd /home/ubuntu/Descargas/ && ${INSTALL_PATH} rccron
 
+EOF
+}
 
-
-
-   Si estás dentro de un directorio y quieres enviar todos los archivos o directorios, lo haríamos del siguiente modo:
-
-   sc .
-   sc g .
-
-
-
-
-   Ejemplos:
-
-   Enviar-Recibir con cron:
-   Emisor   =  00 09 * * * ( sc sccron /home/ubuntu/Descargas/ )
-   Receptor =  01 09 * * * ( cd /home/ubuntu/Descargas/ ; sc rccron )
-sendcroc version $VERSION
-"
-    exit
-		fi
-
-
-
-
-
-mkdir -p ~/.config/sendcroc
-
-if [ -f ~/.config/sendcroc/sendcroc.conf ];
-then
-    source ~/.config/sendcroc/sendcroc.conf
-else
-    echo -en "Introduce el código que quieres utilizar. Puedes aporrear el teclado sin miedo: " ; read -e CODE
-    echo "CODEPASS='$CODE'" >  ~/.config/sendcroc/sendcroc.conf
-    echo -en "Añade información de tu servidor relay, si no vas a utilizar los servidores de croc: " ; read -e RELAYPASS
-    echo "RELAY='$RELAYPASS'" >>  ~/.config/sendcroc/sendcroc.conf
-    echo "Copia este alias en .bashrc o .zshrc y reinicia tu terminal"
-    echo "alias rc='croc --yes $RELAYPASS $CODE'"
-    exit
+# --- Lógica de Instalación ---
+run_install() {
+    echo "--- Instalador de sendcroc ---"
+    
+    # Comprobar si se ejecuta como root para la instalación
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "Error: La instalación debe ejecutarse como root o con sudo." >&2
+        echo "Por favor, ejecuta el comando de instalación anteponiendo 'sudo':" >&2
+        echo "sudo bash <(curl -sL https://raw.githubusercontent.com/uGeek/sendcroc/main/sc) install $1" >&2
+        exit 1
     fi
+    
+    local distro="$1"
+    
+    echo "1. Instalando dependencias para '${distro}'..."
+    case "$distro" in
+        debian)
+            apt-get update && apt-get install -y curl
+            ;;
+        arch)
+            pacman -Sy --noconfirm curl
+            ;;
+        termux)
+            pkg update && pkg install -y croc curl
+            ;;
+        *)
+            echo "Distribución no reconocida. Asegúrate de tener 'curl' instalado manualmente."
+            ;;
+    esac
+    
+    if ! command -v croc &> /dev/null && [ "$distro" != "termux" ]; then
+        echo "2. Instalando 'croc'..."
+        curl -sL https://getcroc.schollz.com | bash
+    fi
+    
+    echo "3. Instalando el script 'sendcroc' en ${INSTALL_PATH}..."
+    # Copia el script que se está ejecutando a la ubicación final
+    cp -f "$0" "${INSTALL_PATH}"
+    chmod +x "${INSTALL_PATH}"
+    
+    echo ""
+    echo "¡Instalación completada!"
+    echo "Ahora puedes ejecutar 'sc' desde cualquier lugar."
+    echo "En la primera ejecución, se te guiará para crear un archivo de configuración."
+    exit 0
+}
 
-source ~/.config/sendcroc/sendcroc.conf
 
+# --- Lógica Principal del Script ---
 
-
-if [ "$1" = "install" ] && [ "$2" = "termux" ]
-then
-    ### Termux
-    pkg upgrade
-    pkg install croc -y
-    termux-setup-storage
-    mkdir -p $HOME/.config/sendcroc/
-    curl -L https://raw.githubusercontent.com/uGeek/sendcroc/main/sc      -o $HOME/.config/sendcroc/sc
-    chmod +x $HOME/.config/sendcroc/sc
-    clear
-    exit
+# Si el primer argumento es 'install', se desvía a la rutina de instalación
+if [ "$1" = "install" ]; then
+    run_install "$2"
 fi
 
 
+check_dependencies() {
+    if ! command -v croc &> /dev/null; then
+        echo "Error: 'croc' no está instalado o no se encuentra en el PATH." >&2
+        echo "Visita https://github.com/schollz/croc para ver cómo instalarlo." >&2
+        exit 1
+    fi
+}
 
-if [ "$1" = "t" ] ; then
+initial_setup() {
+    echo "--- Configuración Inicial de sendcroc ---"
+    
+    read -p "Introduce tu secreto personal (CROC_SECRET): " user_secret
+    read -p "Introduce tus opciones de relay (ej: --pass 'pw' --relay 'host:port'): " user_relay
+    read -p "Introduce un secreto para transferencias globales (CROC_SECRET_GLOBAL): " user_secret_global
+    
+    {
+        echo "# Archivo de configuración para sendcroc"
+        echo "CROC_SECRET='${user_secret}'"
+        echo "# Las opciones de Relay deben ser un array de Bash."
+        echo "RELAY=(${user_relay})"
+        echo "CROC_SECRET_GLOBAL='${user_secret_global:-public-croc-code}'"
+    } > "$CONFIG_FILE"
+    
+    echo -e "\n¡Configuración guardada en ${CONFIG_FILE}! El script ya está listo para usarse."
+    exit 0
+}
 
-echo -en "Escribe aquí el texto que quieres enviar: " ; read TEXTO
-croc $RELAY send --code $CODEPASS  --text "$TEXTO"
-		exit
-		fi
+check_dependencies
 
-
-if [ "$1" = "tg" ] ; then
-
-echo -en "Escribe aquí el texto que quieres enviar: " ; read TEXTO
-croc  send --code $CODEPASSGLOBAL  --text "$TEXTO"
-		exit
-		fi
-
-
-
-if [ "$1" = "g" ] ; then
-    croc --yes send --code $CODEPASSGLOBAL "$2"
-		exit
+mkdir -p "$CONFIG_DIR"
+if [ ! -f "$CONFIG_FILE" ]; then
+    initial_setup
+fi
+# Cargar la configuración solo si existe
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
 fi
 
-
-if [ "$1" = "dotfile" ] ; then
-echo "Archivo de configuración ~/.config/sendcroc/sendcroc.conf"
-echo "---------------------------------------------------------"
-cat ~/.config/sendcroc/sendcroc.conf
-echo ""
-echo "---------------------------------------------------------"
-echo ""
-echo ""
-echo ""
-echo "Copia este texto en tu archivo .bashrc o .zshrc"
-echo "-----------------------------------------------"
-echo "alias rc='croc --yes --overwrite $(echo $RELAY | cut -d" " -f3-4) $(echo $RELAY | cut -d" " -f1-2) $CODEPASS'"
-echo "      --overwrite = Elimina esta opción si no quieres que te pregunte cada vez que tenga que sobreescribir"
-echo "alias rcg='croc --yes  $CODEPASSGLOBAL'"
-echo ""
-echo ""
-echo "Enviar con cron"
-echo "---------------"
-echo "croc --ignore-stdin $RELAY send --code $CODEPASS  [RUTA ARCHIVO O DIRECTORIO]"
-    		exit
+# Lógica de compatibilidad para la variable RELAY
+if ! [[ "$(declare -p RELAY 2>/dev/null)" =~ "declare -a" ]]; then
+    if [ -n "$RELAY" ]; then # Solo si RELAY no está vacío
+        echo "AVISO: Tu archivo sendcroc.conf usa un formato obsoleto para RELAY. Convirtiendo en memoria..." >&2
+        RELAY_OPTS=($RELAY)
+    fi
+else
+    RELAY_OPTS=("${RELAY[@]}")
 fi
 
+COMMAND="$1"
 
-if [ "$1" = "edotfile" ] ; then
-nano 	~/.config/sendcroc/sendcroc.conf
-    exit
-fi
+case "$COMMAND" in
+    "" | "-h" | "h" | "--help")
+        show_help
+        ;;
 
-if [ "$1" = "sccron" ] ; then
-    echo "    croc --ignore-stdin croc $RELAY send --code $CODEPASS  "$2""
-    croc --ignore-stdin $RELAY send --code $CODEPASS  "$2"
-    exit
-fi
+    "rc")
+        echo "Preparando para recibir..."
+        CROC_SECRET="${CROC_SECRET}" croc --yes --overwrite "${RELAY_OPTS[@]}"
+        ;;
 
+    "rcg")
+        echo "Preparando para recibir (global)..."
+        CROC_SECRET="${CROC_SECRET_GLOBAL}" croc --yes
+        ;;
+        
+    "t")
+        read -p "Escribe el texto a enviar y presiona Enter: " texto
+        CROC_SECRET="${CROC_SECRET}" croc "${RELAY_OPTS[@]}" send --text "${texto}"
+        ;;
+        
+    "tg")
+        read -p "Escribe el texto a enviar (vía global): " texto
+        CROC_SECRET="${CROC_SECRET_GLOBAL}" croc send --text "${texto}"
+        ;;
+        
+    "g")
+        shift
+        CROC_SECRET="${CROC_SECRET_GLOBAL}" croc --yes send "$@"
+        ;;
+        
+    "dotfile")
+        cat "${CONFIG_FILE}"
+        ;;
+        
+    "edotfile")
+        ${EDITOR:-nano} "$CONFIG_FILE"
+        ;;
+        
+    "sccron")
+        shift
+        CROC_SECRET="${CROC_SECRET}" croc --ignore-stdin "${RELAY_OPTS[@]}" send "$@"
+        ;;
+        
+    "rccron")
+        CROC_SECRET="${CROC_SECRET}" croc --yes --ignore-stdin --overwrite "${RELAY_OPTS[@]}"
+        ;;
+        
+    *)
+        echo "Enviando: $@"
+        CROC_SECRET="${CROC_SECRET}" croc "${RELAY_OPTS[@]}" send "$@"
+        ;;
+esac
 
-if [ "$1" = "rccron" ] ; then
-		echo "Ejecutando el comando:"
-		echo "----------------------"
-echo "croc  --yes --ignore-stdin --overwrite $(echo $RELAY | cut -d" " -f3-4) $(echo $RELAY | cut -d" " -f1-2) $CODEPASS"
-echo ""
-croc  --yes --ignore-stdin --overwrite  $(echo $RELAY | cut -d" " -f3-4) $(echo $RELAY | cut -d" " -f1-2) $CODEPASS
-    exit
-fi
-
-croc $RELAY send --code $CODEPASS  "$1"
+exit 0
