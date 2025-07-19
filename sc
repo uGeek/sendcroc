@@ -66,6 +66,10 @@ EJEMPLOS
     # Receptor (a las 2:01 AM):
     1 2 * * * cd /home/user/restores/ && ${INSTALL_PATH} rccron
 
+------------------------------                                                                                                                                  
+    $(croc --version)                                                                                                                                           
+------------------------------  
+
 EOF
 }
 
