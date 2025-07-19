@@ -9,15 +9,16 @@
 # subshell para evitar la contaminación del entorno por variables como CROC_RELAY.
 #
 # AUTOR: Basado en el script original de uGeek.
-# VERSIÓN: 5.4.2 (Mejora la sección de ayuda con ejemplos de cron)
+# VERSIÓN: 5.4.3 (Mejora la sección de ayuda con ejemplos de cron)
 # FECHA: 18/07/2025
 
 # --- Variables Globales y de Configuración ---
-VERSION="5.4.2 (18/07/2025)"
+VERSION="5.4.3 (18/07/2025)"
 CONFIG_DIR="${HOME}/.config/sendcroc"
 CONFIG_FILE="${CONFIG_DIR}/sendcroc.conf"
 INSTALL_PATH="/usr/bin/sc"
 
+export $(cat ~/.config/sendcroc/sendcroc.conf | grep "CROC_SECRET=")
 # --- Funciones ---
 
 show_help() {
@@ -70,7 +71,8 @@ EJEMPLOS
     --------------------------
     curl https://getcroc.schollz.com | bash
 
-    ------------------------------                                                                                                                                  
+    ------------------------------ 
+        sendcroc (sc) - v${VERSION}
         $(croc --version)                                                                                                                                           
     ------------------------------  
 
