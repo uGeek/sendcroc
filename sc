@@ -132,11 +132,11 @@ case "$COMMAND" in
         ;;
 
     "rcg")
-        if [ -z "${CROC_SECRET_GLOBAL}" ]; then echo "Error: CROC_SECRET_GLOBAL no está definido." >&2; exit 1; fi
+        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET_GLOBAL no está definido." >&2; exit 1; fi
         echo "Preparando para recibir (global)..."
         (
             unset CROC_RELAY CROC_RELAY6 CROC_PASS
-            CROC_SECRET="${CROC_SECRET_GLOBAL}" croc --yes --overwrite
+            CROC_SECRET="${CROC_SECRET}" croc --yes --overwrite
         )
         ;;
 
