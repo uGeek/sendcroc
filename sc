@@ -4,262 +4,441 @@
 #  sendcroc #
 #===========#
 #
-# DESCRIPCIÓN:
-# Un wrapper robusto para 'croc' que aísla los comandos globales en un
-# subshell para evitar la contaminación del entorno por variables como CROC_RELAY.
-#
-# AUTOR: Basado en el script original de uGeek.
-# VERSIÓN: 6.2.0 (Añade la opción --dry-run para previsualizar comandos)
-# FECHA: 18/07/2025
+# DESCRIPCIÓN: Wrapper definitivo para 'croc'. Documentación y Ejemplos Maximizados.
+# VERSIÓN: 9.0.0 (Ultimate Documentation Update)
+# AUTOR: Refactorizado por IA
 
-# --- Variables Globales y de Configuración ---
-VERSION="6.2.0 (18/07/2025)"
+# --- Configuración de seguridad ---
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# --- Colores ---
+if [ -t 1 ]; then
+    RJO=$(printf '\033[31m')
+    VRD=$(printf '\033[32m')
+    AMA=$(printf '\033[33m')
+    AZL=$(printf '\033[34m')
+    CYN=$(printf '\033[36m')
+    GRS=$(printf '\033[90m')
+    NC=$(printf '\033[0m')
+    BOLD=$(printf '\033[1m')
+else
+    RJO="" VRD="" AMA="" AZL="" CYN="" GRS="" NC="" BOLD=""
+fi
+
+# --- Variables Globales ---
+VERSION="9.0.0"
 CONFIG_DIR="${HOME}/.config/sendcroc"
-INSTALL_PATH="/usr/bin/sc"
-DRY_RUN_ENABLED=0
+CONFIG_FILE="${CONFIG_DIR}/sendcroc.conf"
+HISTORY_FILE="${CONFIG_DIR}/history.log"
 
-# --- Funciones ---
+# Inicialización segura de variables de config
+RELAY_OPTS=() 
+RELAY=()
+
+# Flags de estado
+DRY_RUN=0
+NOTIFY=1
+CLIPBOARD=1
+FORCE_OVERWRITE=1
+AUTO_YES=1
+BURN_AFTER=0
+LOCAL_MODE=0
+GLOBAL_FORCE=0
+ZIP_MODE=0
+OUTPUT_DIR=""
+CURRENT_ACTION=""
+CURRENT_TARGET=""
+
+# --- Funciones de Utilidad ---
+
+log_info() { echo -e "${AZL}${BOLD}[INFO]${NC} $1"; }
+log_server() { echo -e "${CYN}${BOLD}[NET]${NC} $1"; }
+log_success() { echo -e "${VRD}${BOLD}[OK]${NC} $1"; }
+log_warn() { echo -e "${AMA}${BOLD}[WARN]${NC} $1" >&2; }
+log_error() { echo -e "${RJO}${BOLD}[ERROR]${NC} $1" >&2; }
+
+append_history() {
+    local status="$1"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    [ ! -d "$CONFIG_DIR" ] && mkdir -p "$CONFIG_DIR"
+    [ -n "$CURRENT_ACTION" ] && echo "[$timestamp] [$status] [$CURRENT_ACTION] $CURRENT_TARGET" >> "$HISTORY_FILE"
+}
+
+notify() {
+    if [ "$NOTIFY" -eq 1 ] && command -v notify-send &> /dev/null; then
+        if [ -n "${DISPLAY:-}" ] || [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+            notify-send -a "sendcroc" "Transferencia finalizada" "$1" 2>/dev/null || true
+        fi
+    fi
+}
+
+copy_to_clipboard() {
+    local code="$1"
+    if [ "$CLIPBOARD" -ne 1 ]; then return 0; fi
+    if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then return 0; fi
+
+    if command -v wl-copy &> /dev/null; then
+        echo -n "$code" | wl-copy 2>/dev/null || true
+        log_info "Código copiado (Wayland)."
+    elif command -v xclip &> /dev/null; then
+        echo -n "$code" | xclip -selection clipboard 2>/dev/null || true
+        log_info "Código copiado (X11)."
+    elif command -v pbcopy &> /dev/null; then
+        echo -n "$code" | pbcopy 2>/dev/null || true
+        log_info "Código copiado (macOS)."
+    fi
+}
+
+# --- AYUDA Y EJEMPLOS ---
 
 show_help() {
     cat << EOF
+${BOLD}sendcroc (sc) v${VERSION}${NC} - Gestor avanzado de transferencias seguras.
 
-sendcroc (sc) - v${VERSION}
-Wrapper para 'croc' con la sintaxis correcta y verificada para máxima fiabilidad.
+${BOLD}USO:${NC} 
+    sc [FLAGS] [g] <COMANDO | ARCHIVO>
 
-SINOPSIS
-    sc [COMANDO] [ARGUMENTO] [--conf RUTA_CONFIG] [--dry-run]
+${BOLD}JERARQUÍA DE CONEXIÓN:${NC}
+    1. ${BOLD}--local${NC}: Fuerza descubrimiento por LAN (Broadcast).
+    2. ${BOLD}g${NC}:       Fuerza uso de Relay GLOBAL (Público).
+    3. ${BOLD}Defecto${NC}: Usa tu Relay PRIVADO (si está en sendcroc.conf).
 
-COMANDOS PRINCIPALES
-    sc [archivo/dir]            Envía un archivo/dir con tu relay privado.
-    sc r                        Prepara la recepción con tu relay privado.
-    # ... (resto de comandos)
+${BOLD}OPCIONES DE TRANSFERENCIA:${NC}
+    --zip, -z       Comprimir archivo/carpeta (.tar.gz) antes de enviar.
+    --out, -o <dir> Definir directorio de destino para recibir.
+    --burn          Borrar archivo original tras envío exitoso (Autodestrucción).
+    --ask           Preguntar confirmación antes de recibir (Desactiva auto-yes).
+    --resume        Reanudar transferencia / No sobrescribir archivos.
 
-OPCIONES AVANZADAS
-    --conf [ruta]               Usa un archivo de configuración alternativo.
-    --dry-run                   Muestra el comando que se ejecutaría sin ejecutarlo.
+${BOLD}OPCIONES GENERALES:${NC}
+    --conf <file>   Usar archivo de configuración alternativo.
+    --dry-run       Simulación: Muestra el comando 'croc' sin ejecutarlo.
+    --no-notify     Desactivar notificaciones de escritorio.
+    --no-copy       No copiar la clave al portapapeles.
+    --examples      Ver biblioteca completa de ejemplos.
+    --help, -h      Ver esta ayuda.
 
-EJEMPLOS
-
-    # Previsualizar el comando para enviar un archivo:
-    sc mi_archivo.zip --dry-run
-
-    # Resultado esperado:
-    # DRY-RUN: croc '--ignore-stdin' 'send' '--code' 'secreto' 'mi_archivo.zip'
-
-    # Enviar un directorio usando una configuración específica:
-    sc mi_directorio/ --conf /home/user/configs/trabajo.conf
-
-    ------------------------------ 
-        sendcroc (sc) - v${VERSION}
-        $(croc --version)                                                                                                                                           
-    ------------------------------  
-
+${BOLD}COMANDOS:${NC}
+    [archivo]       Enviar (clave fija).
+    r               Recibir (clave fija).
+    loop            Modo Demonio: Bucle infinito de recepción.
+    qr              Generar código QR de la clave.
+    text "msg"      Enviar texto o portapapeles.
+    rand [file]     Enviar con código aleatorio.
+    l [file]        Atajo para enviar localmente.
+    log             Ver historial reciente.
+    u               Actualizar binario 'croc'.
 EOF
 }
 
-execute_croc() {
-    if [ "$DRY_RUN_ENABLED" -eq 1 ]; then
-        printf "DRY-RUN: croc"
-        # Usamos printf con %q para citar correctamente cada argumento
-        for arg in "$@"; do
-            printf " %q" "$arg"
-        done
-        printf "\n"
-        # Nota: Las variables de entorno como CROC_SECRET se definen para el comando
-        # pero no se muestran explícitamente en esta salida.
-    else
-        # Usamos 'command' para evitar recursión si hubiera un alias llamado 'croc'
-        command croc "$@"
-    fi
-}
+show_examples() {
+    cat << EOF
+${BOLD}=== BIBLIOTECA DE EJEMPLOS SENDCROC ===${NC}
 
+${BOLD}1. FUNDAMENTOS (Usando tu Servidor Privado)${NC}
+   ${GRS}Usa la configuración por defecto de sendcroc.conf${NC}
+   sc documento.pdf             ${CYN}# Enviar archivo${NC}
+   sc Fotos_Vacaciones/         ${CYN}# Enviar carpeta (croc la comprime sola)${NC}
+   sc r                         ${CYN}# Recibir en la carpeta actual${NC}
+
+${BOLD}2. SELECCIÓN DE RED${NC}
+   ${GRS}Controla por dónde viajan tus datos${NC}
+   sc g archivo.pdf             ${CYN}# Forzar servidor PÚBLICO (Global)${NC}
+   sc --local video.mp4         ${CYN}# Forzar Red LOCAL (Broadcast P2P)${NC}
+   sc l video.mp4               ${CYN}# Atajo rápido para lo anterior${NC}
+   sc --local r                 ${CYN}# Recibir buscando solo en LAN${NC}
+
+${BOLD}3. GESTIÓN DE ARCHIVOS AVANZADA${NC}
+   ${GRS}Compresión y limpieza${NC}
+   sc --zip node_modules/       ${CYN}# Comprime en tar.gz -> Envía -> Borra el zip${NC}
+   sc --burn secretos.txt       ${CYN}# Envía -> Si éxito -> Borra el original${NC}
+   sc -o ~/Descargas r          ${CYN}# Recibir guardando en 'Descargas'${NC}
+
+${BOLD}4. AUTOMATIZACIÓN Y SERVIDORES${NC}
+   ${GRS}Ideal para dejar un PC recibiendo cosas${NC}
+   sc loop                      ${CYN}# Recibe, termina y vuelve a esperar${NC}
+   sc -o /tmp/inbox loop        ${CYN}# Servidor de recepción continua en /tmp${NC}
+   sc --local -o ~/Nas loop     ${CYN}# Servidor de recepción SOLO local${NC}
+
+${BOLD}5. TEXTO Y TUBERÍAS (PIPES)${NC}
+   ${GRS}Comparte información sin crear archivos${NC}
+   sc text "ContraseñaWifi"     ${CYN}# Envía texto plano${NC}
+   sc text "\$(cat id_rsa.pub)" ${CYN}# Envía contenido de un archivo como texto${NC}
+   echo "Hola Mundo" | sc       ${CYN}# Envía STDIN (salida de un comando)${NC}
+   tar cvf - . | sc             ${CYN}# Empaqueta y envía por pipe${NC}
+
+${BOLD}6. CÓDIGOS ALEATORIOS Y MÓVIL${NC}
+   ${GRS}Si no quieres usar tu clave fija${NC}
+   sc rand foto.jpg             ${CYN}# Genera código tipo '1234-word-word'${NC}
+   sc qr                        ${CYN}# Muestra QR para escanear con móvil${NC}
+
+${BOLD}7. SEGURIDAD Y DEPURACIÓN${NC}
+   sc --ask r                   ${CYN}# Pregunta (y/n) antes de bajar nada${NC}
+   sc --dry-run archivo.txt     ${CYN}# Muestra qué comando ejecutaría (sin hacerlo)${NC}
+   sc log                       ${CYN}# Muestra el historial de transferencias${NC}
+EOF
+}
 
 check_dependencies() {
-    if ! command -v croc &> /dev/null; then
-        echo "Error: 'croc' no está instalado o no se encuentra en el PATH." >&2
-        echo "Puedes instalarlo ejecutando: sc u" >&2
-        exit 1
+    if ! command -v croc &> /dev/null; then log_error "'croc' no instalado."; exit 1; fi
+}
+
+load_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then setup_wizard; fi
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+    
+    # Compatibilidad RELAY vs RELAY_OPTS
+    if [ ${#RELAY[@]} -gt 0 ]; then
+        RELAY_OPTS=("${RELAY[@]}")
+    fi
+
+    if [ -z "${CROC_SECRET:-}" ]; then log_error "CROC_SECRET no definido."; exit 1; fi
+}
+
+setup_wizard() {
+    echo -e "${BOLD}--- Configuración Inicial ---${NC}"
+    mkdir -p "$CONFIG_DIR"
+    read -r -p "Code Phrase (Secret): " secret
+    read -r -p "Relay Privado (Ej: 192.168.1.50:9009) [Enter para Global]: " relay_addr
+    
+    if [ -z "$relay_addr" ]; then 
+        echo "RELAY_OPTS=()" > /tmp/sc_relay_tmp
+    else 
+        echo "RELAY_OPTS=(--pass 'pass_opcional' --relay '$relay_addr')" > /tmp/sc_relay_tmp
+    fi
+
+    cat > "$CONFIG_FILE" << EOF
+CROC_SECRET='$secret'
+$(cat /tmp/sc_relay_tmp)
+EOF
+    rm /tmp/sc_relay_tmp
+    chmod 600 "$CONFIG_FILE"
+}
+
+execute_croc() {
+    local cmd=("$@")
+    local final_opts=()
+
+    # --- LÓGICA DE SELECCIÓN DE SERVIDOR ---
+    
+    if [ "$LOCAL_MODE" -eq 1 ]; then
+        # MODO LOCAL
+        log_server "Conexión: [ MODO LOCAL (P2P Broadcast) ]"
+        final_opts+=("--local")
+        
+    elif [ "$GLOBAL_FORCE" -eq 1 ]; then
+        # MODO GLOBAL
+        log_server "Conexión: [ SERVIDOR PÚBLICO (Global) ]"
+        
+    else
+        # MODO PRIVADO (Defecto)
+        if [ ${#RELAY_OPTS[@]} -gt 0 ]; then
+            final_opts+=("${RELAY_OPTS[@]}")
+            
+            # Intento de extracción de IP para feedback visual
+            local server_ip="Desconocido"
+            local found=0
+            for ((i=0; i<${#RELAY_OPTS[@]}; i++)); do
+                if [[ "${RELAY_OPTS[i]}" == "--relay" ]]; then
+                    if [[ -n "${RELAY_OPTS[i+1]:-}" ]]; then
+                        server_ip="${RELAY_OPTS[i+1]}"
+                        found=1
+                        break
+                    fi
+                fi
+            done
+            
+            if [ "$found" -eq 1 ]; then
+                log_server "Conexión: [ SERVIDOR PRIVADO: \"$server_ip\" ]"
+            else
+                log_server "Conexión: [ SERVIDOR PRIVADO (Configurado) ]"
+            fi
+        else
+            log_server "Conexión: [ SERVIDOR PÚBLICO (No hay relay configurado) ]"
+        fi
+    fi
+
+    # --- EJECUCIÓN ---
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "${GRS}[DRY-RUN] croc ${final_opts[*]} ${cmd[*]}${NC}"
+        return 0
+    else
+        if command croc "${final_opts[@]}" "${cmd[@]}"; then
+            notify "Éxito"
+            append_history "OK"
+            return 0
+        else
+            local err=$?
+            notify "Error ($err)"
+            append_history "ERROR"
+            return $err
+        fi
     fi
 }
 
-initial_setup() {
-    echo "--- Configuración Inicial de sendcroc ---"
-    
-    read -p "Introduce tu secreto personal (CROC_SECRET): " user_secret
-    read -p "Introduce tus opciones de relay (ej: --pass 'pw' --relay 'host:port'): " user_relay
-    read -p "Introduce un secreto para transferencias globales (CROC_SECRET_GLOBAL): " user_secret_global
-    
-    {
-        echo "# Archivo de configuración para sendcroc"
-        echo "CROC_SECRET='${user_secret}'"
-        echo "RELAY=(${user_relay})"
-        echo "CROC_SECRET_GLOBAL='${user_secret_global:-public-croc-code}'"
-    } > "$CONFIG_FILE"
-    
-    echo -e "\n¡Configuración guardada en ${CONFIG_FILE}! El script ya está listo para usarse."
-    exit 0
-}
+# --- Parseo de Argumentos ---
 
-# --- Lógica Principal ---
-
-# 1. Analizar argumentos para --conf y --dry-run
 ARGS=()
-CUSTOM_CONFIG_FILE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --conf)
-            if [ -z "$2" ]; then echo "Error: --conf requiere una ruta." >&2; exit 1; fi
-            CUSTOM_CONFIG_FILE="$2"
-            shift 2
-            ;;
-        --dry-run)
-            DRY_RUN_ENABLED=1
-            shift
-            ;;
-        *)
-            ARGS+=("$1")
-            shift
-            ;;
+        --conf) CONFIG_FILE="$2"; shift 2 ;;
+        --out|-o) OUTPUT_DIR="$2"; shift 2 ;;
+        --burn) BURN_AFTER=1; shift ;;
+        --local) LOCAL_MODE=1; shift ;;
+        --zip|-z) ZIP_MODE=1; shift ;;
+        --ask) AUTO_YES=0; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        --no-notify) NOTIFY=0; shift ;;
+        --no-copy) CLIPBOARD=0; shift ;;
+        --resume) FORCE_OVERWRITE=0; shift ;;
+        --examples) show_examples; exit 0 ;;
+        --help|-h) show_help; exit 0 ;;
+        *) ARGS+=("$1"); shift ;;
     esac
 done
-set -- "${ARGS[@]}" # Restaurar argumentos posicionales filtrados
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
-# 2. Determinar la ruta del archivo de configuración
-CONFIG_FILE="${HOME}/.config/sendcroc/sendcroc.conf" # Por defecto
-if [ -n "$CUSTOM_CONFIG_FILE" ]; then
-    CONFIG_FILE="$CUSTOM_CONFIG_FILE"
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Error: El archivo de configuración no existe: $CONFIG_FILE" >&2
-        exit 1
-    fi
+if [[ "${1:-}" != "u" ]]; then check_dependencies; load_config; fi
+
+# Detectar 'g' al principio
+if [[ "${1:-}" == "g" ]]; then
+    GLOBAL_FORCE=1
+    shift
 fi
 
-# 3. Extraer comando principal
-COMMAND="$1"
-
-# Comandos que no requieren dependencias
-case "$COMMAND" in
-    "u")
-        echo "--- Actualizando croc y el script sendcroc (sc) ---"
-        # Esta acción no es un "dry-run", se ejecuta directamente.
-        curl https://getcroc.schollz.com | bash
-        sudo curl -L https://raw.githubusercontent.com/uGeek/sendcroc/main/sc -o ${INSTALL_PATH} && sudo chmod +x ${INSTALL_PATH}
-        echo "--- ¡Actualización completada! ---"
-        exit 0
-        ;;
-esac
-
-# 4. Lógica principal con dependencias y configuración
-check_dependencies
-
-mkdir -p "$CONFIG_DIR"
-if [ ! -f "$CONFIG_FILE" ]; then
-    initial_setup
+COMMAND="${1:-}"
+RECV_OPTS=()
+if [ -n "$OUTPUT_DIR" ]; then
+    mkdir -p "$OUTPUT_DIR"
+    RECV_OPTS+=("--out" "$OUTPUT_DIR")
 fi
-source "$CONFIG_FILE"
+if [ "$AUTO_YES" -eq 1 ]; then
+    RECV_OPTS+=("--yes")
+    if [ "$FORCE_OVERWRITE" -eq 1 ]; then RECV_OPTS+=("--overwrite"); fi
+fi
 
-if ! [[ "$(declare -p RELAY 2>/dev/null)" =~ "declare -a" ]]; then
-    if [ -n "$RELAY" ]; then RELAY_OPTS=($RELAY); fi
-else
-    RELAY_OPTS=("${RELAY[@]}")
+# --- Ejecución ---
+
+if [ ! -t 0 ]; then
+    log_info "Enviando STDIN..."
+    CURRENT_ACTION="SEND_PIPE"
+    CURRENT_TARGET="STDIN"
+    if [[ "$COMMAND" == "rand" ]]; then execute_croc send
+    else execute_croc send --code "${CROC_SECRET}"; fi
+    exit 0
 fi
 
 case "$COMMAND" in
-    "" | "-h" | "h" | "--help")
-        show_help
+    "") log_error "Falta comando. 'sc -h' o 'sc --examples'."; exit 1 ;;
+    "u") curl https://getcroc.schollz.com | bash; exit 0 ;;
+    "log") [ -f "$HISTORY_FILE" ] && tail -n 20 "$HISTORY_FILE" ;;
+    
+    "qr")
+        log_info "QR para clave: ${CROC_SECRET}"
+        command -v curl &> /dev/null && curl -s "qrenco.de/${CROC_SECRET}" || log_error "Falta 'curl'."
         ;;
 
-    "u")
-        exit 0
+    "rand")
+        shift
+        CURRENT_ACTION="SEND_RANDOM"
+        CURRENT_TARGET="$*"
+        IS_TEMP_ZIP=0
+        if [ "$ZIP_MODE" -eq 1 ]; then
+            log_info "Comprimiendo..."
+            tarname="archive_$(date +%s).tar.gz"
+            tar -czf "$tarname" "$@"
+            set -- "$tarname"
+            IS_TEMP_ZIP=1
+        fi
+        log_info "Enviando (Random)..."
+        if execute_croc send "$@"; then
+            if [ "$IS_TEMP_ZIP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then rm "$tarname"; fi
+        fi
         ;;
 
     "r")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido en $CONFIG_FILE." >&2; exit 1; fi
-        echo "Preparando para recibir..."
-        CROC_SECRET="${CROC_SECRET}" execute_croc --yes --overwrite "${RELAY_OPTS[@]}"
+        CURRENT_ACTION="RECV"
+        CURRENT_TARGET="Incoming"
+        export CROC_SECRET="$CROC_SECRET"
+        log_info "Preparando recepción..."
+        execute_croc "${RECV_OPTS[@]}"
         ;;
 
-    "rg")
-        if [ -z "${CROC_SECRET_GLOBAL}" ]; then echo "Error: CROC_SECRET_GLOBAL no definido en $CONFIG_FILE." >&2; exit 1; fi
-        echo "Preparando para recibir (global)..."
-        (
-            unset CROC_RELAY CROC_RELAY6 CROC_PASS
-            CROC_SECRET="${CROC_SECRET_GLOBAL}" execute_croc --yes --overwrite
-        )
+    "loop")
+        CURRENT_ACTION="LOOP"
+        export CROC_SECRET="$CROC_SECRET"
+        log_info "Modo BUCLE. Ctrl+C para salir."
+        while true; do
+            echo -e "\n${CYN}--- Esperando ---${NC}"
+            execute_croc "${RECV_OPTS[@]}" || true
+            sleep 1
+        done
         ;;
 
-    "t")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
-        read -p "Escribe el texto a enviar: " texto
-        execute_croc "${RELAY_OPTS[@]}" send --code "${CROC_SECRET}" --text "${texto}"
-        ;;
-    
-    "lt")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
-        read -p "Escribe el texto a enviar (local): " texto
-        execute_croc --local "${RELAY_OPTS[@]}" send --code "${CROC_SECRET}" --text "${texto}"
-        ;;
-
-    "gt")
-        if [ -z "${CROC_SECRET_GLOBAL}" ]; then echo "Error: CROC_SECRET_GLOBAL no definido." >&2; exit 1; fi
-        read -p "Escribe el texto a enviar (global): " texto
-        (
-            unset CROC_RELAY CROC_RELAY6 CROC_PASS
-            execute_croc send --code "${CROC_SECRET_GLOBAL}" --text "${texto}"
-        )
-        ;;
-
-    "g")
-        if [ -z "${CROC_SECRET_GLOBAL}" ]; then echo "Error: CROC_SECRET_GLOBAL no definido." >&2; exit 1; fi
-        shift
-        (
-            unset CROC_RELAY CROC_RELAY6 CROC_PASS
-            execute_croc --yes send --code "${CROC_SECRET_GLOBAL}" "$@"
-        )
-        ;;
-
-    "rccron" | "rcron")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
-        CROC_SECRET="${CROC_SECRET}" execute_croc --yes --ignore-stdin --overwrite "${RELAY_OPTS[@]}"
-        ;;
-    
-    "lrcron")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
-        CROC_SECRET="${CROC_SECRET}" execute_croc --local --yes --ignore-stdin --overwrite "${RELAY_OPTS[@]}"
-        ;;
-
-    "sccron" | "scron")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
-        shift
-        execute_croc --ignore-stdin "${RELAY_OPTS[@]}" send --code "${CROC_SECRET}" "$@"
-        ;;
-    
-    "lscron")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
-        shift
-        execute_croc --local --ignore-stdin "${RELAY_OPTS[@]}" send --code "${CROC_SECRET}" "$@"
-        ;;
-
-    "dotfile")
-        cat "${CONFIG_FILE}"
-        ;;
-        
-    "edotfile")
-        ${EDITOR:-nano} "$CONFIG_FILE"
-        ;;
-    
     "l")
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
         shift
-        echo "Enviando localmente: $@"
-        execute_croc --local "${RELAY_OPTS[@]}" send --code "${CROC_SECRET}" "$@"
+        LOCAL_MODE=1
+        if [ -z "${1:-}" ]; then log_error "Falta archivo"; exit 1; fi
+        COMMAND="$1"
+        CURRENT_ACTION="SEND_LOCAL"
+        CURRENT_TARGET="$*"
+        IS_TEMP_ZIP=0
+        if [ "$ZIP_MODE" -eq 1 ]; then
+            log_info "Comprimiendo..."
+            tarname="${COMMAND}.tar.gz"
+            tar -czf "$tarname" "$@"
+            set -- "$tarname"
+            IS_TEMP_ZIP=1
+        fi
+        log_info "Enviando LOCAL..."
+        copy_to_clipboard "$CROC_SECRET"
+        if execute_croc send --code "$CROC_SECRET" "$@"; then
+            if [ "$IS_TEMP_ZIP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then rm "$tarname"; fi
+            if [ "$BURN_AFTER" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] && [ "$IS_TEMP_ZIP" -eq 0 ]; then rm -rf "$COMMAND"; fi
+        fi
         ;;
-        
+
+    "text"|"t")
+        shift
+        CURRENT_ACTION="SEND_TEXT"
+        text="$*"
+        [ -z "$text" ] && read -r -p "Texto: " text
+        copy_to_clipboard "$CROC_SECRET"
+        log_info "Enviando texto..."
+        execute_croc send --code "$CROC_SECRET" --text "$text"
+        ;;
+
     *)
-        if [ -z "${CROC_SECRET}" ]; then echo "Error: CROC_SECRET no definido." >&2; exit 1; fi
-        echo "Enviando: $@"
-        execute_croc "${RELAY_OPTS[@]}" send --code "${CROC_SECRET}" "$@"
+        if [ -e "$COMMAND" ]; then
+            CURRENT_ACTION="SEND_FIXED"
+            CURRENT_TARGET="$COMMAND"
+            IS_TEMP_ZIP=0
+            FILES_TO_SEND=("$@")
+            if [ "$ZIP_MODE" -eq 1 ]; then
+                log_info "Comprimiendo $COMMAND..."
+                tarname="${COMMAND}.tar.gz"
+                tar -czf "$tarname" "${FILES_TO_SEND[@]}"
+                FILES_TO_SEND=("$tarname")
+                IS_TEMP_ZIP=1
+            fi
+            log_info "Enviando: ${FILES_TO_SEND[*]}"
+            copy_to_clipboard "$CROC_SECRET"
+            if execute_croc send --code "$CROC_SECRET" "${FILES_TO_SEND[@]}"; then
+                if [ "$IS_TEMP_ZIP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then rm "$tarname"; fi
+                if [ "$BURN_AFTER" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
+                    log_warn "Autodestrucción (--burn)..."
+                    rm -rf "$COMMAND"
+                    if [ $# -gt 0 ]; then rm -rf "$@"; fi
+                fi
+            fi
+        else
+            log_error "Archivo desconocido: $COMMAND"
+            exit 1
+        fi
         ;;
 esac
-
-exit 0
