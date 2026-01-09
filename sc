@@ -4,8 +4,8 @@
 #  sendcroc #
 #===========#
 #
-# DESCRIPCIÓN: Wrapper definitivo para 'croc'. Documentación y Ejemplos Maximizados.
-# VERSIÓN: 9.0.0 (Ultimate Documentation Update)
+# DESCRIPCIÓN: Wrapper definitivo para 'croc'. (Cron Support, Config Edit, Full Docs).
+# VERSIÓN: 9.2.0 (Cron & Edit Features)
 # AUTOR: Refactorizado por IA
 
 # --- Configuración de seguridad ---
@@ -28,16 +28,15 @@ else
 fi
 
 # --- Variables Globales ---
-VERSION="9.0.0"
+VERSION="9.2.0"
 CONFIG_DIR="${HOME}/.config/sendcroc"
 CONFIG_FILE="${CONFIG_DIR}/sendcroc.conf"
 HISTORY_FILE="${CONFIG_DIR}/history.log"
 
-# Inicialización segura de variables de config
 RELAY_OPTS=() 
 RELAY=()
 
-# Flags de estado
+# Flags
 DRY_RUN=0
 NOTIFY=1
 CLIPBOARD=1
@@ -51,7 +50,7 @@ OUTPUT_DIR=""
 CURRENT_ACTION=""
 CURRENT_TARGET=""
 
-# --- Funciones de Utilidad ---
+# --- Funciones ---
 
 log_info() { echo -e "${AZL}${BOLD}[INFO]${NC} $1"; }
 log_server() { echo -e "${CYN}${BOLD}[NET]${NC} $1"; }
@@ -92,11 +91,9 @@ copy_to_clipboard() {
     fi
 }
 
-# --- AYUDA Y EJEMPLOS ---
-
 show_help() {
     cat << EOF
-${BOLD}sendcroc (sc) v${VERSION}${NC} - Gestor avanzado de transferencias seguras.
+${BOLD}sendcroc (sc) v${VERSION}${NC} - Gestor avanzado de transferencias.
 
 ${BOLD}USO:${NC} 
     sc [FLAGS] [g] <COMANDO | ARCHIVO>
@@ -104,33 +101,36 @@ ${BOLD}USO:${NC}
 ${BOLD}JERARQUÍA DE CONEXIÓN:${NC}
     1. ${BOLD}--local${NC}: Fuerza descubrimiento por LAN (Broadcast).
     2. ${BOLD}g${NC}:       Fuerza uso de Relay GLOBAL (Público).
-    3. ${BOLD}Defecto${NC}: Usa tu Relay PRIVADO (si está en sendcroc.conf).
+    3. ${BOLD}Defecto${NC}: Usa tu Relay PRIVADO (si está configurado).
 
 ${BOLD}OPCIONES DE TRANSFERENCIA:${NC}
-    --zip, -z       Comprimir archivo/carpeta (.tar.gz) antes de enviar.
-    --out, -o <dir> Definir directorio de destino para recibir.
-    --burn          Borrar archivo original tras envío exitoso (Autodestrucción).
-    --ask           Preguntar confirmación antes de recibir (Desactiva auto-yes).
-    --resume        Reanudar transferencia / No sobrescribir archivos.
+    --zip, -z       Comprimir archivo/carpeta (.tar.gz).
+    --out, -o <dir> Directorio de destino.
+    --burn          Borrar original tras envío exitoso.
+    --ask           Preguntar antes de recibir (Desactiva auto-yes).
+    --resume        No sobrescribir archivos.
 
 ${BOLD}OPCIONES GENERALES:${NC}
-    --conf <file>   Usar archivo de configuración alternativo.
-    --dry-run       Simulación: Muestra el comando 'croc' sin ejecutarlo.
-    --no-notify     Desactivar notificaciones de escritorio.
-    --no-copy       No copiar la clave al portapapeles.
-    --examples      Ver biblioteca completa de ejemplos.
+    --conf <file>   Usar configuración alternativa.
+    --dry-run       Simulación (no ejecuta).
+    --no-notify     Sin notificaciones.
+    --no-copy       No copiar clave al portapapeles.
+    --examples      Ver TODOS los ejemplos disponibles.
     --help, -h      Ver esta ayuda.
 
 ${BOLD}COMANDOS:${NC}
     [archivo]       Enviar (clave fija).
     r               Recibir (clave fija).
-    loop            Modo Demonio: Bucle infinito de recepción.
-    qr              Generar código QR de la clave.
-    text "msg"      Enviar texto o portapapeles.
+    sccron [file]   Modo Emisor CRON (No interactivo, --ignore-stdin).
+    rccron          Modo Receptor CRON (Sobrescribe, --ignore-stdin).
+    edit (o conf)   Editar archivo de configuración con nano.
+    loop            Modo Demonio (Bucle infinito).
+    qr              Ver código QR.
+    text "msg"      Enviar texto.
     rand [file]     Enviar con código aleatorio.
-    l [file]        Atajo para enviar localmente.
-    log             Ver historial reciente.
-    u               Actualizar binario 'croc'.
+    l [file]        Atajo local.
+    log             Ver historial.
+    u               Actualizar 'croc'.
 EOF
 }
 
@@ -138,47 +138,41 @@ show_examples() {
     cat << EOF
 ${BOLD}=== BIBLIOTECA DE EJEMPLOS SENDCROC ===${NC}
 
-${BOLD}1. FUNDAMENTOS (Usando tu Servidor Privado)${NC}
-   ${GRS}Usa la configuración por defecto de sendcroc.conf${NC}
-   sc documento.pdf             ${CYN}# Enviar archivo${NC}
-   sc Fotos_Vacaciones/         ${CYN}# Enviar carpeta (croc la comprime sola)${NC}
-   sc r                         ${CYN}# Recibir en la carpeta actual${NC}
+${BOLD}1. AUTOMATIZACIÓN CON CRON (Programador de tareas)${NC}
+   ${GRS}Estos comandos están diseñados para no pedir interacción humana (--ignore-stdin).${NC}
+   
+   ${CYN}# Enviar una copia de seguridad todos los días a las 09:00${NC}
+   ${BOLD}00 09 * * * /usr/bin/sc sccron /home/ubuntu/backup.tar.gz${NC}
 
-${BOLD}2. SELECCIÓN DE RED${NC}
-   ${GRS}Controla por dónde viajan tus datos${NC}
-   sc g archivo.pdf             ${CYN}# Forzar servidor PÚBLICO (Global)${NC}
-   sc --local video.mp4         ${CYN}# Forzar Red LOCAL (Broadcast P2P)${NC}
-   sc l video.mp4               ${CYN}# Atajo rápido para lo anterior${NC}
-   sc --local r                 ${CYN}# Recibir buscando solo en LAN${NC}
+   ${CYN}# Recibir la copia en el otro servidor a las 09:05${NC}
+   ${BOLD}05 09 * * * cd /backup/ ; /usr/bin/sc rccron${NC}
 
-${BOLD}3. GESTIÓN DE ARCHIVOS AVANZADA${NC}
-   ${GRS}Compresión y limpieza${NC}
-   sc --zip node_modules/       ${CYN}# Comprime en tar.gz -> Envía -> Borra el zip${NC}
-   sc --burn secretos.txt       ${CYN}# Envía -> Si éxito -> Borra el original${NC}
-   sc -o ~/Descargas r          ${CYN}# Recibir guardando en 'Descargas'${NC}
+${BOLD}2. CONFIGURACIÓN RÁPIDA${NC}
+   sc edit                  ${CYN}# Abre la configuración con nano${NC}
 
-${BOLD}4. AUTOMATIZACIÓN Y SERVIDORES${NC}
-   ${GRS}Ideal para dejar un PC recibiendo cosas${NC}
-   sc loop                      ${CYN}# Recibe, termina y vuelve a esperar${NC}
-   sc -o /tmp/inbox loop        ${CYN}# Servidor de recepción continua en /tmp${NC}
-   sc --local -o ~/Nas loop     ${CYN}# Servidor de recepción SOLO local${NC}
+${BOLD}3. USO BÁSICO (Clave Fija)${NC}
+   sc documento.pdf         ${CYN}# Enviar archivo${NC}
+   sc Fotos/                ${CYN}# Enviar carpeta${NC}
+   sc r                     ${CYN}# Recibir${NC}
 
-${BOLD}5. TEXTO Y TUBERÍAS (PIPES)${NC}
-   ${GRS}Comparte información sin crear archivos${NC}
-   sc text "ContraseñaWifi"     ${CYN}# Envía texto plano${NC}
-   sc text "\$(cat id_rsa.pub)" ${CYN}# Envía contenido de un archivo como texto${NC}
-   echo "Hola Mundo" | sc       ${CYN}# Envía STDIN (salida de un comando)${NC}
-   tar cvf - . | sc             ${CYN}# Empaqueta y envía por pipe${NC}
+${BOLD}4. RED LOCAL Y SERVIDORES${NC}
+   sc --local video.mp4     ${CYN}# Enviar solo por LAN (Broadcast)${NC}
+   sc g video.mp4           ${CYN}# Forzar servidor PÚBLICO${NC}
 
-${BOLD}6. CÓDIGOS ALEATORIOS Y MÓVIL${NC}
-   ${GRS}Si no quieres usar tu clave fija${NC}
-   sc rand foto.jpg             ${CYN}# Genera código tipo '1234-word-word'${NC}
-   sc qr                        ${CYN}# Muestra QR para escanear con móvil${NC}
+${BOLD}5. GESTIÓN DE ARCHIVOS${NC}
+   sc --zip Proyecto/       ${CYN}# Comprime -> Envía -> Borra zip${NC}
+   sc --burn secretos.txt   ${CYN}# Envía -> Borra original${NC}
+   sc -o ~/Descargas r      ${CYN}# Recibir en carpeta específica${NC}
 
-${BOLD}7. SEGURIDAD Y DEPURACIÓN${NC}
-   sc --ask r                   ${CYN}# Pregunta (y/n) antes de bajar nada${NC}
-   sc --dry-run archivo.txt     ${CYN}# Muestra qué comando ejecutaría (sin hacerlo)${NC}
-   sc log                       ${CYN}# Muestra el historial de transferencias${NC}
+${BOLD}6. MODOS SERVIDOR / DEMONIO${NC}
+   sc loop                  ${CYN}# Recibe en bucle infinito${NC}
+   sc -o /tmp loop          ${CYN}# Servidor temporal${NC}
+
+${BOLD}7. TEXTO Y PIPES${NC}
+   sc text "123456"         ${CYN}# Envía texto plano${NC}
+   ls -la | sc              ${CYN}# Envía salida de comando${NC}
+   sc rand foto.jpg         ${CYN}# Código aleatorio${NC}
+   sc qr                    ${CYN}# Ver QR${NC}
 EOF
 }
 
@@ -191,25 +185,18 @@ load_config() {
     # shellcheck source=/dev/null
     source "$CONFIG_FILE"
     
-    # Compatibilidad RELAY vs RELAY_OPTS
-    if [ ${#RELAY[@]} -gt 0 ]; then
-        RELAY_OPTS=("${RELAY[@]}")
-    fi
-
+    if [ ${#RELAY[@]} -gt 0 ]; then RELAY_OPTS=("${RELAY[@]}"); fi
     if [ -z "${CROC_SECRET:-}" ]; then log_error "CROC_SECRET no definido."; exit 1; fi
 }
 
 setup_wizard() {
-    echo -e "${BOLD}--- Configuración Inicial ---${NC}"
+    echo -e "${BOLD}--- Configuración ---${NC}"
     mkdir -p "$CONFIG_DIR"
     read -r -p "Code Phrase (Secret): " secret
     read -r -p "Relay Privado (Ej: 192.168.1.50:9009) [Enter para Global]: " relay_addr
     
-    if [ -z "$relay_addr" ]; then 
-        echo "RELAY_OPTS=()" > /tmp/sc_relay_tmp
-    else 
-        echo "RELAY_OPTS=(--pass 'pass_opcional' --relay '$relay_addr')" > /tmp/sc_relay_tmp
-    fi
+    if [ -z "$relay_addr" ]; then echo "RELAY_OPTS=()" > /tmp/sc_relay_tmp
+    else echo "RELAY_OPTS=(--pass 'pass' --relay '$relay_addr')" > /tmp/sc_relay_tmp; fi
 
     cat > "$CONFIG_FILE" << EOF
 CROC_SECRET='$secret'
@@ -223,49 +210,35 @@ execute_croc() {
     local cmd=("$@")
     local final_opts=()
 
-    # --- LÓGICA DE SELECCIÓN DE SERVIDOR ---
-    
     if [ "$LOCAL_MODE" -eq 1 ]; then
-        # MODO LOCAL
         log_server "Conexión: [ MODO LOCAL (P2P Broadcast) ]"
         final_opts+=("--local")
-        
     elif [ "$GLOBAL_FORCE" -eq 1 ]; then
-        # MODO GLOBAL
         log_server "Conexión: [ SERVIDOR PÚBLICO (Global) ]"
-        
     else
-        # MODO PRIVADO (Defecto)
         if [ ${#RELAY_OPTS[@]} -gt 0 ]; then
             final_opts+=("${RELAY_OPTS[@]}")
-            
-            # Intento de extracción de IP para feedback visual
             local server_ip="Desconocido"
             local found=0
             for ((i=0; i<${#RELAY_OPTS[@]}; i++)); do
-                if [[ "${RELAY_OPTS[i]}" == "--relay" ]]; then
-                    if [[ -n "${RELAY_OPTS[i+1]:-}" ]]; then
-                        server_ip="${RELAY_OPTS[i+1]}"
-                        found=1
-                        break
-                    fi
+                if [[ "${RELAY_OPTS[i]}" == "--relay" ]] && [[ -n "${RELAY_OPTS[i+1]:-}" ]]; then
+                    server_ip="${RELAY_OPTS[i+1]}"
+                    found=1
+                    break
                 fi
             done
-            
             if [ "$found" -eq 1 ]; then
                 log_server "Conexión: [ SERVIDOR PRIVADO: \"$server_ip\" ]"
             else
                 log_server "Conexión: [ SERVIDOR PRIVADO (Configurado) ]"
             fi
         else
-            log_server "Conexión: [ SERVIDOR PÚBLICO (No hay relay configurado) ]"
+            log_server "Conexión: [ SERVIDOR PÚBLICO (Global Default) ]"
         fi
     fi
 
-    # --- EJECUCIÓN ---
-
     if [ "$DRY_RUN" -eq 1 ]; then
-        echo -e "${GRS}[DRY-RUN] croc ${final_opts[*]} ${cmd[*]}${NC}"
+        echo -e "${GRS}[DRY-RUN] export CROC_SECRET='****'; croc ${final_opts[*]} ${cmd[*]}${NC}"
         return 0
     else
         if command croc "${final_opts[@]}" "${cmd[@]}"; then
@@ -304,12 +277,7 @@ done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 if [[ "${1:-}" != "u" ]]; then check_dependencies; load_config; fi
-
-# Detectar 'g' al principio
-if [[ "${1:-}" == "g" ]]; then
-    GLOBAL_FORCE=1
-    shift
-fi
+if [[ "${1:-}" == "g" ]]; then GLOBAL_FORCE=1; shift; fi
 
 COMMAND="${1:-}"
 RECV_OPTS=()
@@ -324,12 +292,18 @@ fi
 
 # --- Ejecución ---
 
+export CROC_SECRET="$CROC_SECRET"
+
 if [ ! -t 0 ]; then
     log_info "Enviando STDIN..."
     CURRENT_ACTION="SEND_PIPE"
     CURRENT_TARGET="STDIN"
-    if [[ "$COMMAND" == "rand" ]]; then execute_croc send
-    else execute_croc send --code "${CROC_SECRET}"; fi
+    if [[ "$COMMAND" == "rand" ]]; then
+        unset CROC_SECRET
+        execute_croc send
+    else
+        execute_croc send
+    fi
     exit 0
 fi
 
@@ -338,6 +312,37 @@ case "$COMMAND" in
     "u") curl https://getcroc.schollz.com | bash; exit 0 ;;
     "log") [ -f "$HISTORY_FILE" ] && tail -n 20 "$HISTORY_FILE" ;;
     
+    # --- EDICIÓN DE CONFIGURACIÓN ---
+    "edit"|"conf")
+        log_info "Editando configuración con nano..."
+        if command -v nano &> /dev/null; then
+            nano "$CONFIG_FILE"
+        else
+            vi "$CONFIG_FILE"
+        fi
+        exit 0
+        ;;
+
+    # --- MODO CRON EMISOR (sccron) ---
+    "sccron")
+        shift
+        if [ -z "${1:-}" ]; then log_error "Cron Send: Falta archivo"; exit 1; fi
+        CURRENT_ACTION="SEND_CRON"
+        CURRENT_TARGET="$*"
+        # Forzamos ignore-stdin para que no se cuelgue en cron
+        log_info "Modo Cron Send (No interactivo)..."
+        execute_croc --ignore-stdin send "$@"
+        ;;
+
+    # --- MODO CRON RECEPTOR (rccron) ---
+    "rccron")
+        CURRENT_ACTION="RECV_CRON"
+        CURRENT_TARGET="Incoming"
+        log_info "Modo Cron Recv (No interactivo, Sobrescribir)..."
+        # Forzamos yes, overwrite y ignore-stdin
+        execute_croc --yes --overwrite --ignore-stdin "${RECV_OPTS[@]}"
+        ;;
+
     "qr")
         log_info "QR para clave: ${CROC_SECRET}"
         command -v curl &> /dev/null && curl -s "qrenco.de/${CROC_SECRET}" || log_error "Falta 'curl'."
@@ -345,6 +350,7 @@ case "$COMMAND" in
 
     "rand")
         shift
+        unset CROC_SECRET
         CURRENT_ACTION="SEND_RANDOM"
         CURRENT_TARGET="$*"
         IS_TEMP_ZIP=0
@@ -364,14 +370,12 @@ case "$COMMAND" in
     "r")
         CURRENT_ACTION="RECV"
         CURRENT_TARGET="Incoming"
-        export CROC_SECRET="$CROC_SECRET"
         log_info "Preparando recepción..."
         execute_croc "${RECV_OPTS[@]}"
         ;;
 
     "loop")
         CURRENT_ACTION="LOOP"
-        export CROC_SECRET="$CROC_SECRET"
         log_info "Modo BUCLE. Ctrl+C para salir."
         while true; do
             echo -e "\n${CYN}--- Esperando ---${NC}"
@@ -397,7 +401,7 @@ case "$COMMAND" in
         fi
         log_info "Enviando LOCAL..."
         copy_to_clipboard "$CROC_SECRET"
-        if execute_croc send --code "$CROC_SECRET" "$@"; then
+        if execute_croc send "$@"; then
             if [ "$IS_TEMP_ZIP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then rm "$tarname"; fi
             if [ "$BURN_AFTER" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] && [ "$IS_TEMP_ZIP" -eq 0 ]; then rm -rf "$COMMAND"; fi
         fi
@@ -410,7 +414,7 @@ case "$COMMAND" in
         [ -z "$text" ] && read -r -p "Texto: " text
         copy_to_clipboard "$CROC_SECRET"
         log_info "Enviando texto..."
-        execute_croc send --code "$CROC_SECRET" --text "$text"
+        execute_croc send --text "$text"
         ;;
 
     *)
@@ -428,7 +432,7 @@ case "$COMMAND" in
             fi
             log_info "Enviando: ${FILES_TO_SEND[*]}"
             copy_to_clipboard "$CROC_SECRET"
-            if execute_croc send --code "$CROC_SECRET" "${FILES_TO_SEND[@]}"; then
+            if execute_croc send "${FILES_TO_SEND[@]}"; then
                 if [ "$IS_TEMP_ZIP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then rm "$tarname"; fi
                 if [ "$BURN_AFTER" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
                     log_warn "Autodestrucción (--burn)..."
