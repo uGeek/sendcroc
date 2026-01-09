@@ -1,4 +1,5 @@
-# sendcroc – Un Wrapper Inteligente y Potenciado para `croc`
+# 🐊 sendcroc (sc) – Un Wrapper Inteligente y Potenciado para `croc`
+
 
 ![Bash Shell](https://img.shields.io/badge/shell-bash-blue?style=for-the-badge&logo=gnu-bash)  
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
